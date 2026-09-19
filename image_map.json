@@ -1,0 +1,22 @@
+{
+  "800": "car_images/800.png",
+  "alto 800": "car_images/alto_800.png",
+  "alto k10": "car_images/alto_k10.png",
+  "amaze": "car_images/amaze.png",
+  "baleno": "car_images/baleno.png",
+  "brio": "car_images/brio.png",
+  "camry": "car_images/camry.png",
+  "city": "car_images/city.png",
+  "creta": "car_images/creta.png",
+  "elantra": "car_images/elantra.png",
+  "ertiga": "car_images/ertiga.png",
+  "grand i10": "car_images/grand_i10.png",
+  "i10": "car_images/i10.png",
+  "i20": "car_images/i20.png",
+  "ignis": "car_images/ignis.png",
+  "jazz": "car_images/jazz.png",
+  "omni": "car_images/omni.png",
+  "s cross": "car_images/s_cross.png",
+  "swift": "car_images/swift.png",
+  "xcent": "car_images/xcent.png"
+}
