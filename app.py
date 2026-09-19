@@ -1,6 +1,8 @@
 
 import os
 import html
+import base64
+import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -13,6 +15,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 MODEL_PATH = "car_price_predictor.pkl"
 DATA_PATH = "car data.csv"
+IMAGE_DIR = "car_images"
 REFERENCE_YEAR = 2026
 
 model = joblib.load(MODEL_PATH)
@@ -100,6 +103,54 @@ def safe_text(value):
     return html.escape(str(value))
 
 
+
+def normalize_name(value):
+    """Normalize dataset car names for image lookup."""
+    return " ".join(str(value).strip().lower().split())
+
+
+def get_car_image_html(car_name):
+    """
+    Load a local car image from car_images/ and embed it as base64.
+    This works on Render because the image files are part of the repository.
+    """
+    normalized = normalize_name(car_name)
+
+    # image_map.json contains only images that are represented in the
+    # generated catalog. Names without a matching image use the fallback.
+    map_path = os.path.join(IMAGE_DIR, "image_map.json")
+
+    try:
+        with open(map_path, "r", encoding="utf-8") as f:
+            image_map = json.load(f)
+
+        relative_path = image_map.get(normalized)
+
+        if relative_path:
+            image_path = relative_path
+            if not os.path.isabs(image_path):
+                image_path = os.path.join(".", image_path)
+
+            if os.path.exists(image_path):
+                with open(image_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+
+                return (
+                    f'<img class="real-car-image" '
+                    f'src="data:image/png;base64,{encoded}" '
+                    f'alt="{safe_text(car_name)}">'
+                )
+    except Exception:
+        pass
+
+    # Fallback for dataset names not represented in the generated catalog.
+    return """
+    <div class="image-fallback">
+        <span>🚗</span>
+    </div>
+    """
+
+
 def car_card(rank, row):
     car_name = safe_text(row["Car_Name"])
     price = float(row["Selling_Price(lacs)"])
@@ -109,33 +160,7 @@ def car_card(rank, row):
     car_age = int(row["Age"])
 
     rank_class = {1: "gold", 2: "silver", 3: "bronze"}.get(rank, "silver")
-
-    # Simple car illustration so the interface does not depend on another
-    # image file or external image service.
-    car_svg = f"""
-    <svg class="car-svg" viewBox="0 0 280 110" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-            <linearGradient id="g{rank}" x1="0" x2="1">
-                <stop offset="0%" stop-color="#eef5ff"/>
-                <stop offset="100%" stop-color="#cfe2ff"/>
-            </linearGradient>
-        </defs>
-        <ellipse cx="140" cy="91" rx="105" ry="10" fill="#d9e4f2"/>
-        <path d="M43 72 L61 52 Q72 35 99 33 L171 33 Q198 36 215 53 L235 70
-                 Q243 76 239 84 L226 84 Q222 65 204 65 Q186 65 182 84
-                 L94 84 Q90 65 72 65 Q53 65 50 84 L39 84 Q34 78 43 72Z"
-              fill="url(#g{rank})" stroke="#3975d3" stroke-width="3"/>
-        <path d="M86 38 L104 38 L113 56 L71 56 Q78 43 86 38Z"
-              fill="#8fb7df" opacity=".9"/>
-        <path d="M113 38 L169 38 Q188 40 202 56 L119 56Z"
-              fill="#8fb7df" opacity=".9"/>
-        <circle cx="72" cy="84" r="13" fill="#152238"/>
-        <circle cx="72" cy="84" r="6" fill="#d9e3ef"/>
-        <circle cx="204" cy="84" r="13" fill="#152238"/>
-        <circle cx="204" cy="84" r="6" fill="#d9e3ef"/>
-        <rect x="218" y="63" width="13" height="6" rx="3" fill="#ffcf67"/>
-    </svg>
-    """
+    car_image = get_car_image_html(row["Car_Name"])
 
     return f"""
     <div class="car-card {rank_class}">
@@ -145,7 +170,7 @@ def car_card(rank, row):
         </div>
 
         <div class="car-image">
-            {car_svg}
+            {car_image}
         </div>
 
         <div class="car-name">{car_name}</div>
@@ -661,15 +686,29 @@ footer {
 }
 
 .car-image {
-    height: 88px;
+    height: 108px;
     display: grid;
     place-items: center;
     margin-top: 2px;
+    overflow: hidden;
+    border-radius: 11px;
+    background: linear-gradient(180deg, #f7fbff, #edf4fb);
 }
 
-.car-svg {
+.real-car-image {
     width: 100%;
-    height: 95px;
+    height: 108px;
+    object-fit: contain;
+    display: block;
+}
+
+.image-fallback {
+    width: 100%;
+    height: 108px;
+    display: grid;
+    place-items: center;
+    font-size: 52px;
+    background: linear-gradient(180deg, #f7fbff, #edf4fb);
 }
 
 .car-name {
