@@ -109,82 +109,44 @@ def normalize_name(value):
     return " ".join(str(value).strip().lower().split())
 
 
-def get_car_image_html(car_name):
-    """
-    Load a local car image from car_images/ and embed it as base64.
-    This works on Render because the image files are part of the repository.
-    """
+def get_car_image_path(car_name):
+    """Return the local image path for a dataset car name."""
     normalized = normalize_name(car_name)
-
-    # image_map.json contains only images that are represented in the
-    # generated catalog. Names without a matching image use the fallback.
     map_path = os.path.join(IMAGE_DIR, "image_map.json")
-
     try:
         with open(map_path, "r", encoding="utf-8") as f:
             image_map = json.load(f)
-
         relative_path = image_map.get(normalized)
-
-        if relative_path:
-            image_path = relative_path
-            if not os.path.isabs(image_path):
-                image_path = os.path.join(".", image_path)
-
-            if os.path.exists(image_path):
-                with open(image_path, "rb") as f:
-                    encoded = base64.b64encode(f.read()).decode("utf-8")
-
-                return (
-                    f'<img class="real-car-image" '
-                    f'src="data:image/png;base64,{encoded}" '
-                    f'alt="{safe_text(car_name)}">'
-                )
+        if relative_path and os.path.exists(relative_path):
+            return relative_path
     except Exception:
         pass
-
-    # Fallback for dataset names not represented in the generated catalog.
-    return """
-    <div class="image-fallback">
-        <span>🚗</span>
-    </div>
-    """
+    return None
 
 
-def car_card(rank, row):
+
+def car_card_html(rank, row):
     car_name = safe_text(row["Car_Name"])
     price = float(row["Selling_Price(lacs)"])
     fuel = safe_text(row["Fuel_Type"])
     transmission = safe_text(row["Transmission"])
     kms = int(row["Kms_Driven"])
     car_age = int(row["Age"])
-
-    rank_class = {1: "gold", 2: "silver", 3: "bronze"}.get(rank, "silver")
-    car_image = get_car_image_html(row["Car_Name"])
-
     return f"""
-    <div class="car-card {rank_class}">
-        <div class="card-top">
-            <span class="rank-badge">{rank}</span>
-            <span class="heart">♡</span>
-        </div>
-
-        <div class="car-image">
-            {car_image}
-        </div>
-
-        <div class="car-name">{car_name}</div>
-
-        <div class="car-price">{money(price)}</div>
-
-        <div class="spec-grid">
-            <span>⛽ {fuel}</span>
-            <span>⚙️ {transmission}</span>
-            <span>🛣️ {kms:,} km</span>
-            <span>📅 {car_age} years</span>
-        </div>
+    <div class="card-top">
+        <span class="rank-badge">{rank}</span>
+        <span class="heart">♡</span>
+    </div>
+    <div class="car-name">{car_name}</div>
+    <div class="car-price">{money(price)}</div>
+    <div class="spec-grid">
+        <span>⛽ {fuel}</span>
+        <span>⚙️ {transmission}</span>
+        <span>🛣️ {kms:,} km</span>
+        <span>📅 {car_age} years</span>
     </div>
     """
+
 
 
 def prediction_ui(
@@ -226,10 +188,14 @@ def prediction_ui(
             top_n=3,
         )
 
-        cards = "".join(
-            car_card(rank, (_, row)[1])
-            for rank, (_, row) in enumerate(top.iterrows(), start=1)
-        )
+        image_paths = []
+        card_htmls = []
+        for rank, (_, row) in enumerate(top.iterrows(), start=1):
+            image_paths.append(get_car_image_path(row["Car_Name"]))
+            card_htmls.append(car_card_html(rank, row))
+        while len(image_paths) < 3:
+            image_paths.append(None)
+            card_htmls.append('<div class="car-name">No recommendation</div>')
 
         price_html = f"""
         <div class="price-panel">
@@ -250,51 +216,27 @@ def prediction_ui(
         </div>
         """
 
-        recommendation_html = f"""
-        <div class="recommend-section">
-            <div class="recommend-header">
-                <div>
-                    <div class="recommend-title">
-                        <span class="star">★</span> Top 3 Recommended Cars
-                    </div>
-                    <div class="recommend-subtitle">
-                        Closest matches from your dataset
-                    </div>
-                </div>
-                <span class="dataset-pill">Best dataset matches</span>
-            </div>
-
-            <div class="cards-row">
-                {cards}
-            </div>
-        </div>
-        """
-
-        return price_html, recommendation_html
+        return (
+            price_html,
+            image_paths[0], card_htmls[0],
+            image_paths[1], card_htmls[1],
+            image_paths[2], card_htmls[2],
+        )
 
     except Exception as e:
-        return (
-            f"""
-            <div class="price-panel error-panel">
-                <div class="eyebrow">PREDICTION ERROR</div>
-                <div class="error-message">{safe_text(e)}</div>
-            </div>
-            """,
-            "",
-        )
+        error_html = f"""
+        <div class="price-panel error-panel">
+            <div class="eyebrow">PREDICTION ERROR</div>
+            <div class="error-message">{safe_text(e)}</div>
+        </div>
+        """
+        return error_html, None, "", None, "", None, ""
 
 
 def reset_ui():
     return (
-        8.0,
-        35000,
-        "Petrol",
-        "Dealer",
-        "Manual",
-        0,
-        5,
-        "",
-        "",
+        8.0, 35000, "Petrol", "Dealer", "Manual", 0, 5,
+        "", None, "Waiting for prediction", None, "Waiting for prediction", None, "Waiting for prediction"
     )
 
 
@@ -424,15 +366,15 @@ footer {
     padding: 22px 32px 15px;
 }
 
-.input-card,
-.results-wrap {
+.input-panel,
+.results-panel {
     background: white;
     border: 1px solid var(--border);
     border-radius: 18px;
     box-shadow: 0 8px 28px rgba(24, 66, 112, .08);
 }
 
-.input-card {
+.input-panel {
     padding: 24px 24px 20px;
 }
 
@@ -468,20 +410,20 @@ footer {
 
 /* Gradio inputs */
 
-.input-card label span {
+.input-panel label span {
     color: var(--text) !important;
     font-weight: 700 !important;
 }
 
-.input-card input,
-.input-card select {
+.input-panel input,
+.input-panel select {
     border-radius: 10px !important;
     border: 1px solid #d5e1ef !important;
     min-height: 44px !important;
 }
 
-.input-card input:focus,
-.input-card select:focus {
+.input-panel input:focus,
+.input-panel select:focus {
     border-color: #2886ff !important;
     box-shadow: 0 0 0 3px rgba(40,134,255,.10) !important;
 }
@@ -504,7 +446,7 @@ footer {
 
 /* ---------- Results ---------- */
 
-.results-wrap {
+.results-panel {
     padding: 20px;
 }
 
@@ -620,7 +562,7 @@ footer {
 
 .cards-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 13px;
 }
 
@@ -862,7 +804,7 @@ with gr.Blocks(
     with gr.Row(elem_classes="main-wrap"):
 
         # LEFT: INPUT
-        with gr.Column(scale=4, elem_classes="input-card"):
+        with gr.Column(scale=4, elem_classes="input-panel"):
 
             gr.HTML("""
             <div class="section-heading">
@@ -913,13 +855,14 @@ with gr.Blocks(
                     label="Previous Owners",
                 )
 
-            age = gr.Slider(
+            age = gr.Number(
+                value=5,
                 minimum=0,
                 maximum=20,
-                value=5,
-                step=1,
+                precision=0,
                 label="Car Age (Years)",
-                info="Move the slider to set the vehicle age.",
+                info="Enter the vehicle age in years.",
+                elem_classes="age-control",
             )
 
             with gr.Row():
@@ -934,7 +877,7 @@ with gr.Blocks(
                 )
 
         # RIGHT: RESULTS
-        with gr.Column(scale=7, elem_classes="results-wrap"):
+        with gr.Column(scale=7, elem_classes="results-panel"):
 
             price_output = gr.HTML("""
             <div class="price-panel">
@@ -953,28 +896,32 @@ with gr.Blocks(
             </div>
             """)
 
-            recommendation_output = gr.HTML("""
-            <div class="recommend-section">
-                <div class="recommend-header">
-                    <div>
-                        <div class="recommend-title">
-                            <span class="star">★</span> Top 3 Recommended Cars
-                        </div>
-                        <div class="recommend-subtitle">
-                            Matching cars will appear here after prediction.
-                        </div>
-                    </div>
-                    <span class="dataset-pill">Dataset matches</span>
+            gr.HTML("""
+            <div class="recommend-header">
+                <div>
+                    <div class="recommend-title"><span class="star">★</span> Top 3 Recommended Cars</div>
+                    <div class="recommend-subtitle">Closest matches from your dataset</div>
                 </div>
-
-                <div class="cards-row">
-                    <div class="car-card">
-                        <div class="car-image">🚗</div>
-                        <div class="car-name">Waiting for prediction</div>
-                    </div>
-                </div>
+                <span class="dataset-pill">Best dataset matches</span>
             </div>
             """)
+
+            with gr.Row(elem_classes="cards-row"):
+                with gr.Column(elem_classes="car-card-shell gold"):
+                    image1 = gr.Image(value=None, type="filepath", show_label=False,
+                                      interactive=False, container=False,
+                                      elem_classes="car-image-box")
+                    card1 = gr.HTML('<div class="car-name">Waiting for prediction</div>')
+                with gr.Column(elem_classes="car-card-shell silver"):
+                    image2 = gr.Image(value=None, type="filepath", show_label=False,
+                                      interactive=False, container=False,
+                                      elem_classes="car-image-box")
+                    card2 = gr.HTML('<div class="car-name">Waiting for prediction</div>')
+                with gr.Column(elem_classes="car-card-shell bronze"):
+                    image3 = gr.Image(value=None, type="filepath", show_label=False,
+                                      interactive=False, container=False,
+                                      elem_classes="car-image-box")
+                    card3 = gr.HTML('<div class="car-name">Waiting for prediction</div>')
 
     gr.HTML("""
     <div class="footer">
@@ -999,7 +946,7 @@ with gr.Blocks(
             past_owners,
             age,
         ],
-        outputs=[price_output, recommendation_output],
+        outputs=[price_output, image1, card1, image2, card2, image3, card3],
         show_progress="minimal",
     )
 
@@ -1014,7 +961,7 @@ with gr.Blocks(
             past_owners,
             age,
             price_output,
-            recommendation_output,
+            image1, card1, image2, card2, image3, card3,
         ],
     )
 
