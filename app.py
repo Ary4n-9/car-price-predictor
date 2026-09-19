@@ -3,6 +3,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import gradio as gr
+import os
 from sklearn.preprocessing import MinMaxScaler
 
 MODEL_PATH = "car_price_predictor.pkl"
@@ -234,4 +235,10 @@ with gr.Blocks(
 
 
 if __name__ == "__main__":
-    demo.launch()
+
+    port = int(os.environ.get("PORT", 7860))
+
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port
+    )
